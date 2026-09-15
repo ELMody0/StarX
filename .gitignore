@@ -1,0 +1,28 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+*.pdb
+*.user
+.vs/
+
+# Release artifacts (distributed via GitHub Releases, never committed)
+StarX-v*.zip
+StarX-v*.zip.sha256
+publish/
+stage/
+
+# Local publish/temp work (outside the repo — nothing to do)
+
+# Secrets — NEVER commit tokens or keys
+.env
+*token*.txt
+*secret*.txt
+*key*.txt
+appsettings.*.json
+
+# OS / editor junk
+Thumbs.db
+Desktop.ini
+.vscode/
+.idea/
+*.swp

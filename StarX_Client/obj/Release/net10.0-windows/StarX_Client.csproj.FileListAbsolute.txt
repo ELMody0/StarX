@@ -1,0 +1,17 @@
+D:\StarX\StarX_Client\bin\Release\net10.0-windows\NativeBridge.dll
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\StarX_Client.GeneratedMSBuildEditorConfig.editorconfig
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\StarX_Client.AssemblyInfoInputs.cache
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\StarX_Client.AssemblyInfo.cs
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\StarX_Client.csproj.CoreCompileInputs.cache
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\StarX_Client.genruntimeconfig.cache
+D:\StarX\StarX_Client\bin\Release\net10.0-windows\scripts\starx_tools.py
+D:\StarX\StarX_Client\bin\Release\net10.0-windows\StarX.exe
+D:\StarX\StarX_Client\bin\Release\net10.0-windows\StarX.deps.json
+D:\StarX\StarX_Client\bin\Release\net10.0-windows\StarX.runtimeconfig.json
+D:\StarX\StarX_Client\bin\Release\net10.0-windows\StarX.dll
+D:\StarX\StarX_Client\bin\Release\net10.0-windows\StarX.pdb
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\StarX.dll
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\refint\StarX.dll
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\StarX.pdb
+D:\StarX\StarX_Client\obj\Release\net10.0-windows\ref\StarX.dll
+D:\StarX\StarX_Client\bin\Release\net10.0-windows\VERSION
