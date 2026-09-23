@@ -11,7 +11,7 @@ internal static class AppSettings
     internal static string? DirOverride;
 #pragma warning restore CS0649
 
-    private static string Dir =>
+    internal static string Dir =>
         DirOverride ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "StarX");
 

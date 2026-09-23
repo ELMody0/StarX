@@ -34,6 +34,8 @@ internal static class UpdateManager
         "rate" => Lang.T("upd_rate"),
         "none" => Lang.T("upd_none"),
         "invalid" or "no-checksum" => Lang.T("upd_invalid"),
+        "no-signature" => Lang.T("upd_no_signature"),
+        "bad-signature" => Lang.T("upd_bad_signature"),
         _ when (err ?? "").StartsWith("http:", StringComparison.OrdinalIgnoreCase) => Lang.T("upd_failed"),
         _ => Lang.T("upd_failed"),
     };
@@ -82,20 +84,53 @@ internal static class UpdateManager
     /// <summary>تشغيل المحدّث ثم إغلاق التطبيق. ترجع رسالة خطأ أو null عند النجاح.</summary>
     public static async Task<string?> LaunchUpdaterAsync(ReleaseInfo rel, CancellationToken ct = default)
     {
+        // نفس حماية المحدّث: مجلد التطوير (فيه .pdb/.csproj) لا يُحدَّث —
+        // ونرجع رسالة بدل ما نخرج من التطبيق على الفاضي.
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(
+                AppContext.BaseDirectory, "*", SearchOption.TopDirectoryOnly))
+            {
+                string ext = Path.GetExtension(f);
+                if (ext.Equals(".pdb", StringComparison.OrdinalIgnoreCase) ||
+                    ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+                    return Lang.T("upd_dev_folder");
+            }
+        }
+        catch { /* ignore → proceed */ }
+
         string? updater = FindUpdater();
         if (updater == null)
-            return Lang.T("upd_no_updater");
+            return Lang.T("upd_no_updater") + "\n" +
+                   Path.Combine(AppContext.BaseDirectory, "StarXUpdater.exe");
 
         var (sha, shaErr) = await GitHubManager.GetAssetSha256Async(rel, ct).ConfigureAwait(false);
         if (string.IsNullOrEmpty(sha))
             return Lang.T("upd_no_checksum") +
                    (shaErr == "network" ? " (" + Lang.T("upd_failed") + ")" : "");
 
+        // توقيع ECDSA — خط الدفاع ضد اختطاع حساب GitHub (المفتاح العام مضمّن)
+        var (sig, sigErr) = await GitHubManager.GetAssetSignatureAsync(rel, ct).ConfigureAwait(false);
+#if !DEBUG
+        if (string.IsNullOrEmpty(sig))
+            return Lang.T("upd_no_signature") +
+                   (sigErr == "network" ? " (" + Lang.T("upd_failed") + ")" : "");
+#endif
+        if (!string.IsNullOrEmpty(sig) &&
+            !StarXShared.UpdateSecurity.VerifySha256Hex(sha, sig))
+            return Lang.T("upd_bad_signature");
+#if DEBUG
+        // في التطوير: السماح بغياب التوقيع للتجربة المحلية فقط
+        if (string.IsNullOrEmpty(sig))
+            sig = "";
+#endif
+
         string args = $"--pid {Environment.ProcessId} " +
                       $"--install-dir \"{AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar)}\" " +
                       $"--download-url \"{rel.DownloadUrl}\" " +
                       $"--version \"{rel.Version}\" " +
-                      $"--sha256 \"{sha}\"";
+                      $"--sha256 \"{sha}\"" +
+                      (string.IsNullOrEmpty(sig) ? "" : $" --sig \"{sig}\"");
         try
         {
             Process.Start(new ProcessStartInfo

@@ -1,254 +1,170 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 
 namespace StarX_Client;
 
-// شريط علوي فخم: زجاج داكن + إبراز علوي + توهج خلف اللوجو + ظل داخلي سفلي
+// Simple flat black & white controls.
+// No animation, no gradients, no shadows, no 3D effects — solid colors only.
+
 internal sealed class MenuBarPanel : Panel
 {
-    public MenuBarPanel()
-    {
-        DoubleBuffered = true;
-        BackColor = Color.FromArgb(17, 17, 17);
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        base.OnPaint(e);
-        var g = e.Graphics;
-        if (Width <= 0 || Height <= 0) return;
-
-        // تدرج أساسي أعمق
-        using (var bg = new LinearGradientBrush(
-            ClientRectangle,
-            Color.FromArgb(48, 48, 48),
-            Color.FromArgb(8, 8, 8),
-            LinearGradientMode.Vertical))
-            g.FillRectangle(bg, ClientRectangle);
-
-        // لمعة زجاجية على النصف العلوي
-        using (var gloss = new LinearGradientBrush(
-            new Rectangle(0, 0, Width, Math.Max(1, Height / 2)),
-            Color.FromArgb(60, 255, 255, 255),
-            Color.FromArgb(0, 255, 255, 255),
-            LinearGradientMode.Vertical))
-            g.FillRectangle(gloss, 0, 0, Width, Height / 2);
-
-        // توهج ناعم خلف اللوجو (مكان الأيقونة أعلى اليسار)
-        using (var path = new GraphicsPath())
-        {
-            path.AddEllipse(2, -6, 72, 72);
-            using var halo = new PathGradientBrush(path);
-            halo.CenterColor = Color.FromArgb(55, 255, 255, 255);
-            halo.SurroundColors = [Color.FromArgb(0, 255, 255, 255)];
-            g.FillEllipse(halo, 2, -6, 72, 72);
-        }
-
-        // خط علوي مضيء + خط ثانٍ خافت (إحساس معدني)
-        using (var p = new Pen(Color.FromArgb(230, 255, 255, 255)))
-            g.DrawLine(p, 0, 0, Width, 0);
-        using (var p = new Pen(Color.FromArgb(95, 95, 95)))
-            g.DrawLine(p, 0, 1, Width, 1);
-
-        // ظل داخلي سفلي يعطي عمق فوق الفاصل الـ 3D
-        using (var sh = new LinearGradientBrush(
-            new Rectangle(0, Height - 5, Width, 5),
-            Color.FromArgb(0, 0, 0, 0),
-            Color.FromArgb(170, 0, 0, 0),
-            LinearGradientMode.Vertical))
-            g.FillRectangle(sh, 0, Height - 5, Width, 5);
-    }
+    public MenuBarPanel() { DoubleBuffered = true; BackColor = Color.Black; }
 }
 
-// فاصل 3D تحت المنيو بار: إبراز أبيض + ظل يعطي عمق
+// Thin flat divider line.
 internal sealed class Separator3D : Control
 {
-    public Separator3D()
-    {
-        Height = 6;
-        Dock = DockStyle.Top;
-        DoubleBuffered = true;
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        var g = e.Graphics;
-        // 1px أبيض (إبراز علوي)
-        using (var p = new Pen(Color.FromArgb(255, 255, 255)))
-            g.DrawLine(p, 0, 0, Width, 0);
-        // 1px رمادي متوسط
-        using (var p = new Pen(Color.FromArgb(140, 140, 140)))
-            g.DrawLine(p, 0, 1, Width, 1);
-        // 2px رمادي غامق
-        using (var b = new SolidBrush(Color.FromArgb(42, 42, 42)))
-            g.FillRectangle(b, 0, 2, Width, 2);
-        // 2px ظل أسود
-        using (var b = new SolidBrush(Color.FromArgb(0, 0, 0)))
-            g.FillRectangle(b, 0, 4, Width, 2);
-    }
+    public Separator3D() { Height = 1; Dock = DockStyle.Top; BackColor = Color.White; }
 }
 
-// خلفية سيمبل: أسود سادة (بدون تأثيرات)
+// Plain black background panel.
 internal sealed class LuxuryBackground : Panel
 {
-    public LuxuryBackground()
+    public LuxuryBackground() { DoubleBuffered = true; Dock = DockStyle.Fill; BackColor = Color.Black; }
+}
+
+// Flat button: Primary = white background + black text,
+// otherwise black background + white text with a white border.
+internal sealed class GlassButton : Button
+{
+    private bool _primary;
+
+    [DefaultValue(false)]
+    public bool Primary
     {
-        DoubleBuffered = true;
-        Dock = DockStyle.Fill;
-        BackColor = Color.Black;
+        get => _primary;
+        set { _primary = value; ApplyColors(); }
+    }
+
+    public GlassButton()
+    {
+        FlatStyle = FlatStyle.Flat;
+        FlatAppearance.BorderSize = 1;
+        FlatAppearance.BorderColor = Color.White;
+        Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        Cursor = Cursors.Hand;
+        ApplyColors();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyColors();
+    }
+
+    private void ApplyColors()
+    {
+        if (Primary)
+        {
+            BackColor = Color.White;
+            ForeColor = Color.Black;
+            FlatAppearance.MouseOverBackColor = Color.White;
+            FlatAppearance.MouseDownBackColor = Color.White;
+        }
+        else
+        {
+            BackColor = Color.Black;
+            ForeColor = Color.White;
+            FlatAppearance.MouseOverBackColor = Color.Black;
+            FlatAppearance.MouseDownBackColor = Color.Black;
+        }
     }
 }
 
-// زر قائمة فخم: نص أبيض + خط سفلي عند التحويم/التحديد
+// Plain text box: black background, white text, thin white border.
+internal sealed class GlassTextBox : TextBox
+{
+    public GlassTextBox()
+    {
+        BackColor = Color.Black;
+        ForeColor = Color.White;
+        BorderStyle = BorderStyle.FixedSingle;
+        Font = new Font("Segoe UI", 10.5F);
+    }
+}
+
+// Flat menu button (kept for compatibility).
 internal sealed class LuxuryMenuButton : Button
 {
-    private bool _hover;
-    [System.ComponentModel.Browsable(false)]
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool Selected { get; set; }
 
     public LuxuryMenuButton()
     {
         FlatStyle = FlatStyle.Flat;
-        FlatAppearance.BorderSize = 0;
-        FlatAppearance.MouseOverBackColor = Color.Transparent;
-        FlatAppearance.MouseDownBackColor = Color.Transparent;
-        BackColor = Color.Transparent;
+        FlatAppearance.BorderSize = 1;
+        FlatAppearance.BorderColor = Color.White;
+        FlatAppearance.MouseOverBackColor = Color.Black;
+        FlatAppearance.MouseDownBackColor = Color.Black;
+        BackColor = Color.Black;
         ForeColor = Color.White;
         Font = new Font("Segoe UI", 10F, FontStyle.Regular);
         AutoSize = false;
         Size = new Size(92, 64);
         Cursor = Cursors.Hand;
-        DoubleBuffered = true;
-    }
-
-    protected override void OnMouseEnter(EventArgs e)
-    {
-        _hover = true;
-        Invalidate();
-        base.OnMouseEnter(e);
-    }
-
-    protected override void OnMouseLeave(EventArgs e)
-    {
-        _hover = false;
-        Invalidate();
-        base.OnMouseLeave(e);
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        var g = e.Graphics;
-        g.Clear(Parent?.BackColor ?? Color.FromArgb(17, 17, 17));
-
-        if (_hover || Selected)
-        {
-            using var bg = new SolidBrush(Color.FromArgb(38, 38, 38));
-            g.FillRectangle(bg, 4, 8, Width - 8, Height - 16);
-        }
-
-        var fore = (_hover || Selected) ? Color.White : Color.FromArgb(210, 210, 210);
-        TextRenderer.DrawText(g, Text, Font, new Rectangle(0, 0, Width, Height - 4),
-            fore, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-
-        if (_hover || Selected)
-        {
-            using var underline = new SolidBrush(Color.White);
-            g.FillRectangle(underline, Width / 2 - 22, Height - 12, 44, 2);
-        }
     }
 }
 
-// زر إعدادات: ترس مرسوم بالكود فقط (بدون أي ملف خارجي)
+// Flat settings button (kept for compatibility).
 internal sealed class GearButton : Button
 {
-    private bool _hover;
-    private float _angle;
-
     public GearButton()
     {
         Size = new Size(46, 46);
         FlatStyle = FlatStyle.Flat;
-        FlatAppearance.BorderSize = 0;
-        FlatAppearance.MouseOverBackColor = Color.Transparent;
-        FlatAppearance.MouseDownBackColor = Color.Transparent;
-        BackColor = Color.Transparent;
+        FlatAppearance.BorderSize = 1;
+        FlatAppearance.BorderColor = Color.White;
+        FlatAppearance.MouseOverBackColor = Color.Black;
+        FlatAppearance.MouseDownBackColor = Color.Black;
+        BackColor = Color.Black;
         ForeColor = Color.White;
         Cursor = Cursors.Hand;
-        DoubleBuffered = true;
-    }
-
-    protected override void OnMouseEnter(EventArgs e)
-    {
-        _hover = true;
-        _angle = 12f;
-        Invalidate();
-        base.OnMouseEnter(e);
-    }
-
-    protected override void OnMouseLeave(EventArgs e)
-    {
-        _hover = false;
-        _angle = 0f;
-        Invalidate();
-        base.OnMouseLeave(e);
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.Clear(Parent?.BackColor ?? Color.FromArgb(17, 17, 17));
-
-        if (_hover)
-        {
-            using var bg = new SolidBrush(Color.FromArgb(45, 45, 45));
-            g.FillEllipse(bg, 2, 2, Width - 4, Height - 4);
-            using var ring = new Pen(Color.FromArgb(255, 255, 255), 1);
-            g.DrawEllipse(ring, 2, 2, Width - 4, Height - 4);
-        }
-
-        // رسم الترس
-        var cx = Width / 2f;
-        var cy = Height / 2f;
-        var outer = 13f;
-        var inner = 9f;
-        const int teeth = 8;
-
-        g.TranslateTransform(cx, cy);
-        g.RotateTransform(_angle);
-
-        using var gearBrush = new SolidBrush(Color.White);
-        for (int i = 0; i < teeth; i++)
-        {
-            float a = i * 360f / teeth;
-            var state = g.Save();
-            g.RotateTransform(a);
-            g.FillRectangle(gearBrush, -2.2f, -outer - 1.5f, 4.4f, 5f);
-            g.Restore(state);
-        }
-
-        g.FillEllipse(gearBrush, -inner, -inner, inner * 2, inner * 2);
-
-        // الثقب الداخلي (بلون الخلفية لمحاكاة التفريغ)
-        var holeColor = _hover ? Color.FromArgb(45, 45, 45) : (Parent?.BackColor ?? Color.FromArgb(17, 17, 17));
-        using var hole = new SolidBrush(holeColor);
-        g.FillEllipse(hole, -5.5f, -5.5f, 11f, 11f);
-        using var holeRing = new Pen(Color.White, 2f);
-        g.DrawEllipse(holeRing, -5.5f, -5.5f, 11f, 11f);
-
-        g.ResetTransform();
     }
 }
 
-// منصة تحكم زجاجية فاخرة: أزرار بارزة 3D + زنبرك منزلق
-// أنواع أزرار الفقاعة: هوم • إعدادات • برو • مالك
+// iPhone-style dock: spring indicator, bounce scale, monochrome depth.
 internal enum DockKind { Home, Settings, Pro, Owner }
 
 internal sealed class FloatingDock : Control
 {
-    private const int PadX = 3;
-    private const int CellMin = 71;
+    private const int PadX = 6;
+    private const int CellW = 64;
+    private const int BarH = 60;
     private readonly List<DockKind> _kinds = [DockKind.Home, DockKind.Settings];
+    private readonly ToolTip _tips = new();
+    private readonly System.Windows.Forms.Timer _anim = new() { Interval = 15 };
+    private int _selected;
+    private int _hover = -1;
+    private int _pressedIdx = -1;
+    private float _ix; // spring indicator x
+    private float _iv;
+    private float[] _sc = [1f, 1f]; // per-icon scale
+    private float[] _sv = [0f, 0f]; // per-icon scale velocity
+
+    public event Action<int>? SelectedChanged;
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public int SelectedIndex => _selected;
+
+    public FloatingDock()
+    {
+        DoubleBuffered = true;
+        BackColor = Color.Black;
+        ForeColor = Color.White;
+        Size = new Size(PadX * 2 + _kinds.Count * CellW, BarH);
+        Cursor = Cursors.Hand;
+        _ix = CellCenterX(_selected);
+        _anim.Tick += (s, e) => Step();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { _anim.Dispose(); _tips.Dispose(); }
+        base.Dispose(disposing);
+    }
 
     private static string KindName(DockKind k) => k switch
     {
@@ -261,64 +177,30 @@ internal sealed class FloatingDock : Control
 
     public void RefreshLanguage()
     {
-        if (_hover >= 0 && _hover < _kinds.Count)
-            _tips.SetToolTip(this, KindName(_kinds[_hover]));
+        _tips.SetToolTip(this, _hover >= 0 && _hover < _kinds.Count ? KindName(_kinds[_hover]) : string.Empty);
         Invalidate();
     }
 
-    private int Items => _kinds.Count;
-
-    private int _selected;
-    private int _hover = -1;
-    private float _x;            // موضع المؤشر (زنبرك فيزيائي)
-    private float _v;            // سرعة الزنبرك
-    private float _target;
-    private bool _snapped;
-    private float _press;        // انضغاط اللمس 0..1
-    private float _pressTarget;
-    private float _hoverGlow;    // توهج التحويم 0..1
-    private readonly System.Windows.Forms.Timer _anim;
-    private readonly ToolTip _tips;
-
-    public event Action<int>? SelectedChanged;
-
-    [System.ComponentModel.Browsable(false)]
-    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
-    public int SelectedIndex => _selected;
-
-    public FloatingDock()
+    private void EnsureScales()
     {
-        SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.OptimizedDoubleBuffer |
-                 ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
-        DoubleBuffered = true;
-        BackColor = Color.Transparent;
-        _tips = new ToolTip();
-        _anim = new System.Windows.Forms.Timer { Interval = 15 };
-        Size = new Size(148, 60);
-        Cursor = Cursors.Hand;
-        _anim.Tick += (s, e) =>
+        if (_sc.Length != _kinds.Count)
         {
-            // زنبرك فيزيائي مخمد: انزلاق + ارتداد خفيف ستايل iOS
-            float f = (_target - _x) * 0.16f;
-            _v = (_v + f) * 0.70f;
-            _x += _v;
-            if (Math.Abs(_v) < 0.05f && Math.Abs(_target - _x) < 0.4f) { _x = _target; _v = 0; }
-            // انضغاط اللمس + توهج التحويم
-            _press += (_pressTarget - _press) * 0.35f;
-            float hg = (_hover >= 0 && _hover != _selected) ? 1f : 0f;
-            _hoverGlow += (hg - _hoverGlow) * 0.25f;
-            bool calm = _x == _target && _v == 0 &&
-                        Math.Abs(_pressTarget - _press) < 0.01f &&
-                        Math.Abs(hg - _hoverGlow) < 0.01f;
-            if (calm) { _press = _pressTarget; _hoverGlow = hg; _anim.Stop(); }
-            Invalidate();
-        };
+            _sc = new float[_kinds.Count];
+            _sv = new float[_kinds.Count];
+            for (int i = 0; i < _sc.Length; i++) _sc[i] = 1f;
+        }
     }
 
-    protected override void Dispose(bool disposing)
+    private void UpdateRegion()
     {
-        if (disposing) { _anim.Dispose(); _tips.Dispose(); }
-        base.Dispose(disposing);
+        if (Width <= 0 || Height <= 0) return;
+        try
+        {
+            Region?.Dispose();
+            using var p = StarXTheme.GetRoundedPath(new RectangleF(0, 0, Width, Height), 22);
+            Region = new Region(p);
+        }
+        catch { }
     }
 
     public void SetItems(IEnumerable<DockKind> kinds)
@@ -327,50 +209,59 @@ internal sealed class FloatingDock : Control
         _kinds.AddRange(kinds);
         if (_kinds.Count == 0) _kinds.Add(DockKind.Home);
         if (_selected >= _kinds.Count) _selected = 0;
-        Width = PadX * 2 + _kinds.Count * CellMin;
-        _target = CellCenterX(_selected);
-        _x = _target;
-        _v = 0;
-        _anim.Start();
+        if (_hover >= _kinds.Count) _hover = -1;
+        _pressedIdx = -1;
+        Width = PadX * 2 + _kinds.Count * CellW;
+        Height = BarH;
+        UpdateRegion();
+        EnsureScales();
+        _ix = CellCenterX(_selected);
+        _iv = 0;
+        for (int i = 0; i < _sc.Length; i++) { _sc[i] = i == _selected ? 1.18f : 1f; _sv[i] = 0; }
+        _anim.Stop();
         Invalidate();
     }
 
     public void SetSelected(int index, bool raise = true)
     {
-        index = Math.Clamp(index, 0, Items - 1);
+        index = Math.Clamp(index, 0, _kinds.Count - 1);
         _selected = index;
-        _target = CellCenterX(index);
-        if (!_snapped) { _x = _target; _v = 0; _snapped = true; }
+        EnsureScales();
         _anim.Start();
         Invalidate();
         if (raise) SelectedChanged?.Invoke(index);
     }
 
-    private float CellW => (Width - PadX * 2) / (float)Items;
     private float CellCenterX(int i) => PadX + i * CellW + CellW / 2f;
-
-    protected override void OnResize(EventArgs e)
-    {
-        base.OnResize(e);
-        _target = CellCenterX(_selected);
-        if (!_anim.Enabled) { _x = _target; _v = 0; }
-        Invalidate();
-    }
-
-    protected override void OnHandleCreated(EventArgs e)
-    {
-        base.OnHandleCreated(e);
-        _target = CellCenterX(_selected);
-        _x = _target;
-        _v = 0;
-        _snapped = true;
-    }
 
     private int HitTest(int x)
     {
-        for (int i = 0; i < Items; i++)
+        for (int i = 0; i < _kinds.Count; i++)
             if (Math.Abs(x - CellCenterX(i)) < CellW / 2f) return i;
         return -1;
+    }
+
+    private void Step()
+    {
+        EnsureScales();
+        float target = CellCenterX(_selected);
+        _iv += (target - _ix) * 0.045f;
+        _iv *= 0.82f;
+        _ix += _iv;
+        bool settled = Math.Abs(_iv) < 0.05f && Math.Abs(target - _ix) < 0.4f;
+        if (settled) { _ix = target; _iv = 0; }
+        for (int i = 0; i < _sc.Length; i++)
+        {
+            float st = i == _pressedIdx ? 0.86f
+                : i == _selected ? 1.18f
+                : i == _hover ? 1.07f : 1f;
+            _sv[i] += (st - _sc[i]) * 0.06f;
+            _sv[i] *= 0.78f;
+            _sc[i] = Math.Clamp(_sc[i] + _sv[i], 0.7f, 1.35f);
+            if (Math.Abs(_sv[i]) > 0.001f || Math.Abs(st - _sc[i]) > 0.002f) settled = false;
+        }
+        if (settled) _anim.Stop();
+        Invalidate();
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -382,7 +273,6 @@ internal sealed class FloatingDock : Control
             Cursor = h >= 0 ? Cursors.Hand : Cursors.Default;
             _tips.SetToolTip(this, h >= 0 ? KindName(_kinds[h]) : string.Empty);
             _anim.Start();
-            Invalidate();
         }
         base.OnMouseMove(e);
     }
@@ -390,160 +280,422 @@ internal sealed class FloatingDock : Control
     protected override void OnMouseLeave(EventArgs e)
     {
         _hover = -1;
-        _pressTarget = 0;
+        _tips.SetToolTip(this, string.Empty);
         _anim.Start();
-        Invalidate();
         base.OnMouseLeave(e);
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
         int h = HitTest(e.X);
-        _pressTarget = 1;
-        _anim.Start();
-        if (h >= 0) SetSelected(h);
+        if (h >= 0) { _pressedIdx = h; _anim.Start(); }
         base.OnMouseDown(e);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
-        _pressTarget = 0;
-        _anim.Start();
+        if (_pressedIdx >= 0)
+        {
+            int h = HitTest(e.X);
+            int idx = _pressedIdx;
+            _pressedIdx = -1;
+            if (h == idx) SetSelected(idx);
+            else { _anim.Start(); Invalidate(); }
+        }
         base.OnMouseUp(e);
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        EnsureScales();
+        _ix = CellCenterX(_selected);
+        _iv = 0;
+        UpdateRegion();
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        Height = BarH;
+        UpdateRegion();
+        Invalidate();
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
+        base.OnPaint(e);
         var g = e.Graphics;
         if (Width <= 0 || Height <= 0) return;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-
-        // فقاعة سيمبل: أسود سادة + إطار خفيف + إبراز علوي
-        var pill = new RectangleF(3, 4, Width - 6, Height - 8);
-        using (var body = new SolidBrush(Color.FromArgb(20, 20, 20)))
-        using (var pp = RoundedRect(pill, 26))
-            g.FillPath(body, pp);
-        using (var border = new Pen(Color.FromArgb(38, 255, 255, 255), 1))
-        using (var bp = RoundedRect(pill, 26))
-            g.DrawPath(border, bp);
-        using (var hl = new Pen(Color.FromArgb(55, 255, 255, 255), 1))
-            g.DrawLine(hl, pill.X + 24, pill.Y + 1, pill.Right - 24, pill.Y + 1);
-
-        // دائرة التحديد البيضاء + ظل ناعم
-        float sc = 1f - 0.10f * _press;
-        float r = 19 * sc;
-        float cyk = Height / 2f + 1;
-        using (var sh = new SolidBrush(Color.FromArgb(90, 0, 0, 0)))
-            g.FillEllipse(sh, _x - r, cyk - r + 2.5f, r * 2, r * 2);
-        using (var w = new SolidBrush(Color.White))
-            g.FillEllipse(w, _x - r, cyk - r, r * 2, r * 2);
-
-        // تحويم خفيف + أيقونات خطية رفيعة
-        if (_hoverGlow > 0.02f && _hover >= 0 && _hover != _selected)
+        EnsureScales();
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.Clear(Color.Black);
+        // pill-shaped bar
+        using (var barPath = StarXTheme.GetRoundedPath(new RectangleF(1, 1, Width - 2, Height - 2), 21))
         {
-            float hx = CellCenterX(_hover);
-            using var hbg = new SolidBrush(Color.FromArgb((int)(22 * _hoverGlow), 255, 255, 255));
-            g.FillEllipse(hbg, hx - 18, cyk - 18, 36, 36);
+            using var bg = new SolidBrush(Color.Black);
+            g.FillPath(bg, barPath);
+            using var frame = new Pen(Color.White, 1);
+            g.DrawPath(frame, barPath);
         }
-        for (int i = 0; i < Items; i++)
+        float cy = BarH / 2f;
+        for (int i = 0; i < _kinds.Count; i++)
         {
-            float cx = CellCenterX(i);
+            float cx = i == _selected ? _ix : CellCenterX(i);
             bool sel = i == _selected;
-            Color c = sel ? Color.Black : (_hover == i ? Color.White : Color.FromArgb(175, 175, 175));
-            DrawIcon(g, (int)_kinds[i], cx, cyk, c, c);
+            float s = Math.Clamp(_sc[i], 0.7f, 1.35f);
+            if (sel)
+            {
+                // soft offset squircle shadow for depth (monochrome)
+                using (var shp = StarXTheme.GetRoundedPath(new RectangleF(cx - 16 + 2.5f, cy - 16 + 3.5f, 32, 32), 11))
+                using (var sh = new SolidBrush(Color.FromArgb(70, 70, 70)))
+                    g.FillPath(sh, shp);
+            }
+            var state = g.Save();
+            g.TranslateTransform(cx, cy);
+            g.ScaleTransform(s, s);
+            if (sel)
+            {
+                // iOS-style rounded-square tile
+                using (var tile = StarXTheme.GetRoundedPath(new RectangleF(-16, -16, 32, 32), 10))
+                using (var bg = new SolidBrush(Color.White))
+                    g.FillPath(bg, tile);
+            }
+            DrawIcon(g, _kinds[i], 0, 0, sel ? Color.Black : Color.White);
+            g.Restore(state);
+            if (sel)
+            {
+                using var ringPath = StarXTheme.GetRoundedPath(new RectangleF(cx - 19, cy - 19, 38, 38), 12);
+                using var ring = new Pen(Color.White, 1);
+                g.DrawPath(ring, ringPath);
+            }
         }
     }
 
-    private static void DrawIcon(Graphics g, int kind, float cx, float cy, Color c, Color bg)
+    private static void DrawIcon(Graphics g, DockKind kind, float cx, float cy, Color c)
     {
-        var prev = g.SmoothingMode;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        using var pen = new Pen(c, 2.2f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        using var pen = new Pen(c, 2.2f)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+            LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
+        };
         using var brush = new SolidBrush(c);
         switch (kind)
         {
-            case 0: // هوم
+            case DockKind.Home:
+            {
+                g.DrawLines(pen, [new PointF(cx - 11, cy - 1), new PointF(cx, cy - 10.5f), new PointF(cx + 11, cy - 1)]);
+                g.DrawRectangle(pen, cx - 7.5f, cy - 1, 15, 10.5f);
+                g.FillRectangle(brush, cx - 2.4f, cy + 3.4f, 4.8f, 6.1f);
+                break;
+            }
+            case DockKind.Settings:
+            {
+                float[] rows = [-8f, 0f, 8f];
+                float[] knobs = [-4.5f, 5f, -0.5f];
+                for (int k = 0; k < 3; k++)
                 {
-                    var roof = new[] { new PointF(cx - 11, cy - 1), new PointF(cx, cy - 10.5f), new PointF(cx + 11, cy - 1) };
-                    g.DrawLines(pen, roof);
-                    g.DrawRectangle(pen, cx - 7.5f, cy - 1, 15, 10.5f);
-                    g.FillRectangle(brush, cx - 2.4f, cy + 3.4f, 4.8f, 6.1f);
-                    break;
+                    float yy = cy + rows[k];
+                    g.DrawLine(pen, cx - 10, yy, cx + 10, yy);
+                    g.FillEllipse(brush, cx + knobs[k] - 4, yy - 4, 8, 8);
                 }
-            case 1: // الإعدادات: سلايدرز سيمبل
+                break;
+            }
+            case DockKind.Pro:
+            {
+                var pts = new PointF[10];
+                for (int s = 0; s < 10; s++)
                 {
-                    float[] rows = [-8f, 0f, 8f];
-                    float[] knobs = [-4.5f, 5f, -0.5f];
-                    for (int k = 0; k < 3; k++)
-                    {
-                        float yy = cy + rows[k];
-                        g.DrawLine(pen, cx - 10, yy, cx + 10, yy);
-                        g.FillEllipse(brush, cx + knobs[k] - 4, yy - 4, 8, 8);
-                    }
-                    break;
+                    float ang = (-90 + s * 36) * (float)Math.PI / 180f;
+                    float rr = s % 2 == 0 ? 10.5f : 4.4f;
+                    pts[s] = new PointF(cx + rr * (float)Math.Cos(ang), cy + rr * (float)Math.Sin(ang));
                 }
-            case 2: // البرو: نجمة
+                g.FillPolygon(brush, pts);
+                break;
+            }
+            case DockKind.Owner:
+            {
+                var crown = new[]
                 {
-                    var pts = new PointF[10];
-                    for (int s = 0; s < 10; s++)
-                    {
-                        float ang = (-90 + s * 36) * (float)Math.PI / 180f;
-                        float rr = s % 2 == 0 ? 10.5f : 4.4f;
-                        pts[s] = new PointF(cx + rr * (float)Math.Cos(ang), cy + rr * (float)Math.Sin(ang));
-                    }
-                    g.FillPolygon(brush, pts);
-                    break;
-                }
-            case 3: // المالك: تاج
-                {
-                    var crown = new[]
-                    {
-                        new PointF(cx - 11, cy + 7), new PointF(cx - 11, cy - 2),
-                        new PointF(cx - 6, cy + 2.5f), new PointF(cx - 3.5f, cy - 7),
-                        new PointF(cx, cy + 1.5f), new PointF(cx + 3.5f, cy - 7),
-                        new PointF(cx + 6, cy + 2.5f), new PointF(cx + 11, cy - 2),
-                        new PointF(cx + 11, cy + 7),
-                    };
-                    g.FillPolygon(brush, crown);
-                    g.DrawPolygon(pen, crown);
-                    g.FillEllipse(brush, cx - 5.1f, cy - 8.6f, 3.2f, 3.2f);
-                    g.FillEllipse(brush, cx + 1.9f, cy - 8.6f, 3.2f, 3.2f);
-                    break;
-                }
-            default:
-                goto case 1;
+                    new PointF(cx - 11, cy + 7), new PointF(cx - 11, cy - 2),
+                    new PointF(cx - 6, cy + 2.5f), new PointF(cx - 3.5f, cy - 7),
+                    new PointF(cx, cy + 1.5f), new PointF(cx + 3.5f, cy - 7),
+                    new PointF(cx + 6, cy + 2.5f), new PointF(cx + 11, cy - 2),
+                    new PointF(cx + 11, cy + 7),
+                };
+                g.FillPolygon(brush, crown);
+                g.FillEllipse(brush, cx - 5.1f, cy - 8.6f, 3.2f, 3.2f);
+                g.FillEllipse(brush, cx + 1.9f, cy - 8.6f, 3.2f, 3.2f);
+                break;
+            }
         }
-        g.SmoothingMode = prev;
-    }
-
-    private static GraphicsPath RoundedRect(RectangleF r, float radius)
-    {
-        float d = Math.Max(1, radius * 2);
-        var p = new GraphicsPath();
-        p.AddArc(r.X, r.Y, d, d, 180, 90);
-        p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
-        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
-        p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
-        p.CloseFigure();
-        return p;
     }
 }
 
-// أيقونة خروج حمراء صغيرة (باب + سهم)
-internal sealed class ExitIconButton : Control
+// Flat card: black background, thin white border, white header text.
+internal sealed class CardPanel : Panel
 {
-    private bool _hover;
-    private readonly ToolTip _tips;
+    private string? _headerText;
+
+    public CardPanel()
+    {
+        DoubleBuffered = true;
+        BackColor = Color.Black;
+        ForeColor = Color.White;
+        Margin = new Padding(4);
+    }
+
+    [DefaultValue(typeof(Color), "White")]
+    public Color Accent { get; set; } = Color.White;
+
+    [DefaultValue(null)]
+    public string? HeaderText
+    {
+        get => _headerText;
+        set
+        {
+            if (_headerText != value)
+            {
+                _headerText = value;
+                if (IsHandleCreated) Invalidate();
+            }
+        }
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        try { PaintLuxe(e); } catch { }
+    }
+
+    private void PaintLuxe(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        if (g == null || Width <= 0 || Height <= 0) return;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        var rect = new RectangleF(1, 1, Width - 2, Height - 2);
+        const int rad = 14;
+
+        // 1) soft lift shadow (monochrome)
+        using (var shp = StarXTheme.GetRoundedPath(new RectangleF(rect.X + 1, rect.Y + 3, rect.Width, rect.Height), rad))
+        using (var sh = new SolidBrush(Color.FromArgb(60, 60, 60)))
+            g.FillPath(sh, shp);
+
+        // 2) body: subtle vertical sheen, dark gray -> black
+        using (var body = StarXTheme.GetRoundedPath(rect, rad))
+        using (var bg = new LinearGradientBrush(
+            new Rectangle((int)rect.X, (int)rect.Y, (int)rect.Width, Math.Max(1, (int)rect.Height)),
+            Color.FromArgb(26, 26, 28), Color.Black, LinearGradientMode.Vertical))
+            g.FillPath(bg, body);
+
+        // 3) static glass light falling from the top
+        using (var clip = StarXTheme.GetRoundedPath(rect, rad))
+        {
+            g.SetClip(clip);
+            using var sheen = new LinearGradientBrush(
+                new Rectangle((int)rect.X, (int)rect.Y, (int)rect.Width, Math.Max(1, (int)(rect.Height / 2))),
+                Color.FromArgb(34, 255, 255, 255), Color.FromArgb(0, 255, 255, 255),
+                LinearGradientMode.Vertical);
+            g.FillRectangle(sheen, rect.X, rect.Y, rect.Width, rect.Height / 2f + 1);
+            g.ResetClip();
+        }
+
+        // 4) soft frame + bright top edge (less glare)
+        using (var bp = StarXTheme.GetRoundedPath(rect, rad))
+        using (var frame = new Pen(Color.FromArgb(215, 215, 220), 1))
+            g.DrawPath(frame, bp);
+        using (var hl = new Pen(Color.FromArgb(120, 255, 255, 255), 1))
+            g.DrawLine(hl, rect.X + rad, rect.Y + 0.5f, rect.Right - rad, rect.Y + 0.5f);
+
+        // 5) header: white bar + bold title + divider (same metrics as before)
+        if (!string.IsNullOrEmpty(HeaderText))
+        {
+            using (var bar = StarXTheme.GetRoundedPath(new RectangleF(16, 12, 4, 20), 2))
+            using (var wb = new SolidBrush(Color.White))
+                g.FillPath(wb, bar);
+            using var hf = new Font("Segoe UI", 12F, FontStyle.Bold);
+            TextRenderer.DrawText(g, HeaderText, hf,
+                new Rectangle(28, 8, Math.Max(10, (int)rect.Width - 46), 28),
+                Color.White, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+            using var div = new Pen(Color.FromArgb(80, 255, 255, 255), 1);
+            g.DrawLine(div, 16, 42, rect.Right - 2, 42);
+        }
+    }
+}
+
+// Flat button: Primary = white background + black text,
+// otherwise black background + white text with a white border.
+internal sealed class LuxuryButton : Button
+{
+    private bool _primary = true;
+
+    [Browsable(false)]
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public bool Primary
+    {
+        get => _primary;
+        set { _primary = value; ApplyColors(); }
+    }
+
+    public LuxuryButton()
+    {
+        FlatStyle = FlatStyle.Flat;
+        FlatAppearance.BorderSize = 1;
+        FlatAppearance.BorderColor = Color.White;
+        Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+        Cursor = Cursors.Hand;
+        ApplyColors();
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyColors();
+    }
+
+    private void ApplyColors()
+    {
+        if (Primary)
+        {
+            BackColor = Color.White;
+            ForeColor = Color.Black;
+            FlatAppearance.MouseOverBackColor = Color.White;
+            FlatAppearance.MouseDownBackColor = Color.White;
+        }
+        else
+        {
+            BackColor = Color.Black;
+            ForeColor = Color.White;
+            FlatAppearance.MouseOverBackColor = Color.Black;
+            FlatAppearance.MouseDownBackColor = Color.Black;
+        }
+    }
+}
+
+// Soft monochrome list: dark alternating rows, white selection. No animation.
+internal sealed class LuxuryListView : ListView
+{
+    private static readonly Color RowEven = Color.FromArgb(16, 16, 20);
+    private static readonly Color RowOdd = Color.FromArgb(22, 22, 29);
+    private static readonly Color RowHover = Color.FromArgb(32, 32, 42);
+    private static readonly Color HeadBg = Color.FromArgb(27, 27, 33);
+    private static readonly Color LineColor = Color.FromArgb(38, 38, 46);
+    private static readonly Color TextSoft = Color.FromArgb(237, 237, 239);
+    private static readonly Color TextDim = Color.FromArgb(160, 160, 170);
+    private static readonly Color SelectBg = Color.FromArgb(237, 237, 239);
+
+    private int _hover = -1;
+    private readonly Font _headFont = new("Segoe UI", 9F, FontStyle.Bold);
+
+    public LuxuryListView()
+    {
+        OwnerDraw = true;
+        DoubleBuffered = true;
+        BackColor = Color.Black;
+        ForeColor = TextSoft;
+        BorderStyle = BorderStyle.FixedSingle;
+        FullRowSelect = true;
+        HideSelection = false;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _headFont.Dispose();
+        base.Dispose(disposing);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        int h = HitTest(e.X, e.Y).Item?.Index ?? -1;
+        if (h != _hover) { _hover = h; Invalidate(); }
+        base.OnMouseMove(e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        _hover = -1;
+        Invalidate();
+        base.OnMouseLeave(e);
+    }
+
+    protected override void OnDrawColumnHeader(DrawListViewColumnHeaderEventArgs e)
+    {
+        var g = e.Graphics;
+        using (var bg = new SolidBrush(HeadBg))
+            g.FillRectangle(bg, e.Bounds);
+        TextRenderer.DrawText(g, e.Header?.Text ?? "", _headFont,
+            new Rectangle(e.Bounds.X + 8, e.Bounds.Y, e.Bounds.Width - 12, e.Bounds.Height),
+            TextSoft, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+        using (var div = new Pen(LineColor))
+        {
+            g.DrawLine(div, e.Bounds.X, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+            g.DrawLine(div, e.Bounds.Right - 1, e.Bounds.Y + 4, e.Bounds.Right - 1, e.Bounds.Bottom - 4);
+        }
+    }
+
+    protected override void OnDrawItem(DrawListViewItemEventArgs e)
+    {
+        e.DrawDefault = false;
+    }
+
+    protected override void OnDrawSubItem(DrawListViewSubItemEventArgs e)
+    {
+        var g = e.Graphics;
+        bool sel = e.Item?.Selected ?? false;
+        bool hov = e.Item?.Index == _hover && !sel;
+        Color back = sel ? SelectBg
+            : hov ? RowHover
+            : (e.Item?.Index ?? 0) % 2 == 0 ? RowEven : RowOdd;
+        using (var b = new SolidBrush(back))
+            g.FillRectangle(b, e.Bounds);
+        using (var ln = new Pen(LineColor))
+        {
+            g.DrawLine(ln, e.Bounds.X, e.Bounds.Bottom - 1, e.Bounds.Right, e.Bounds.Bottom - 1);
+            g.DrawLine(ln, e.Bounds.Right - 1, e.Bounds.Y, e.Bounds.Right - 1, e.Bounds.Bottom);
+        }
+
+        Color fore = sel ? Color.Black : TextSoft;
+        if (e.ColumnIndex == 0 && CheckBoxes)
+        {
+            // soft round checkbox
+            float cx = e.Bounds.X + 8, cyy = e.Bounds.Y + (e.Bounds.Height - 14) / 2f;
+            bool on = e.Item?.Checked ?? false;
+            Color ring = sel ? Color.Black : on ? TextSoft : TextDim;
+            using (var p = new Pen(ring, 1.5f))
+                g.DrawEllipse(p, cx, cyy, 14, 14);
+            if (on)
+            {
+                using var f = new SolidBrush(sel ? Color.Black : Color.White);
+                g.FillEllipse(f, cx + 3.5f, cyy + 3.5f, 7, 7);
+            }
+            return;
+        }
+
+        TextRenderer.DrawText(g, e.SubItem?.Text ?? "", Font,
+            new Rectangle(e.Bounds.X + 6, e.Bounds.Y, e.Bounds.Width - 12, e.Bounds.Height),
+            fore, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+    }
+}
+
+// Logout button: vivid red door + exiting arrow on black.
+internal sealed class ExitIconButton : Button
+{
+    private static readonly Color LogoutRed = Color.FromArgb(229, 57, 53);
+    private readonly ToolTip _tips = new();
 
     public ExitIconButton()
     {
-        SetStyle(ControlStyles.SupportsTransparentBackColor | ControlStyles.OptimizedDoubleBuffer |
-                 ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint, true);
-        DoubleBuffered = true;
-        BackColor = Color.Transparent;
-        Size = new Size(34, 34);
+        Size = new Size(36, 36);
+        FlatStyle = FlatStyle.Flat;
+        FlatAppearance.BorderSize = 0;
+        FlatAppearance.MouseOverBackColor = Color.Black;
+        FlatAppearance.MouseDownBackColor = Color.Black;
+        BackColor = Color.Black;
+        ForeColor = LogoutRed;
+        Text = "";
         Cursor = Cursors.Hand;
-        _tips = new ToolTip();
+        DoubleBuffered = true;
         _tips.SetToolTip(this, Lang.T("exit_tip"));
     }
 
@@ -555,39 +707,281 @@ internal sealed class ExitIconButton : Control
         base.Dispose(disposing);
     }
 
-    protected override void OnMouseEnter(EventArgs e)
-    {
-        _hover = true;
-        Invalidate();
-        base.OnMouseEnter(e);
-    }
-
-    protected override void OnMouseLeave(EventArgs e)
-    {
-        _hover = false;
-        Invalidate();
-        base.OnMouseLeave(e);
-    }
-
     protected override void OnPaint(PaintEventArgs e)
     {
         var g = e.Graphics;
         if (Width <= 0 || Height <= 0) return;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        Color c = _hover ? Color.FromArgb(255, 120, 120) : Color.FromArgb(205, 92, 92);
-        if (_hover)
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.Clear(Color.Black);
+        using (var frame = new Pen(LogoutRed, 1))
+            g.DrawRectangle(frame, 0, 0, Width - 1, Height - 1);
+        using var pen = new Pen(LogoutRed, 2.6f)
         {
-            using var glow = new SolidBrush(Color.FromArgb(45, 255, 90, 90));
-            g.FillEllipse(glow, 2, 2, Width - 4, Height - 4);
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+            LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
+        };
+        // door frame open on the right: top / left / bottom
+        g.DrawLine(pen, 9, 8, 17, 8);
+        g.DrawLine(pen, 9, 8, 9, 28);
+        g.DrawLine(pen, 9, 28, 17, 28);
+        // bold arrow leaving the door to the right
+        g.DrawLine(pen, 13, 18, 27, 18);
+        g.DrawLine(pen, 22, 13, 27, 18);
+        g.DrawLine(pen, 22, 23, 27, 18);
+    }
+}
+
+// Standard checkbox: black background, white text.
+internal sealed class LuxuryCheckBox : CheckBox
+{
+    public LuxuryCheckBox()
+    {
+        AutoSize = true;
+        BackColor = Color.Black;
+        ForeColor = Color.White;
+        Font = new Font("Segoe UI", 10F);
+        Padding = new Padding(6, 0, 0, 0);
+    }
+}
+
+// Flat dropdown list: black field, dark popup menu, white text.
+internal sealed class LuxuryComboBox : ComboBox
+{
+    public LuxuryComboBox()
+    {
+        DrawMode = DrawMode.OwnerDrawFixed;
+        DropDownStyle = ComboBoxStyle.DropDownList;
+        FlatStyle = FlatStyle.Flat;
+        BackColor = Color.Black;
+        ForeColor = Color.White;
+        Font = new Font("Segoe UI", 10F);
+        ItemHeight = 24;
+    }
+
+    protected override void OnDrawItem(DrawItemEventArgs e)
+    {
+        try
+        {
+            var g = e.Graphics;
+            if (g == null) return;
+            if (e.Index < 0 || e.Index >= Items.Count) { e.DrawBackground(); return; }
+            bool edit = (e.State & DrawItemState.ComboBoxEdit) == DrawItemState.ComboBoxEdit;
+            bool sel = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            string txt = Items[e.Index]?.ToString() ?? "";
+            if (edit)
+            {
+                e.DrawBackground();
+                TextRenderer.DrawText(g, txt, Font, e.Bounds, ForeColor,
+                    TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+                return;
+            }
+            using (var b = new SolidBrush(sel ? Color.White : Color.FromArgb(16, 16, 20)))
+                g.FillRectangle(b, e.Bounds);
+            TextRenderer.DrawText(g, txt, Font,
+                new Rectangle(e.Bounds.X + 8, e.Bounds.Y, e.Bounds.Width - 12, e.Bounds.Height),
+                sel ? Color.Black : Color.White,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
         }
-        using var pen = new Pen(c, 2.2f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-        // الباب (مفتوح يساراً)
-        g.DrawLine(pen, 26, 8, 26, 26);
-        g.DrawLine(pen, 26, 8, 17, 8);
-        g.DrawLine(pen, 26, 26, 17, 26);
-        // السهم للخارج (يساراً)
-        g.DrawLine(pen, 22, 17, 10, 17);
-        g.DrawLine(pen, 14, 13, 10, 17);
-        g.DrawLine(pen, 14, 21, 10, 17);
+        catch { /* ignore */ }
+    }
+}
+
+// Small title-bar update icon: dim circular arrow when idle,
+// bright arrow + white badge dot when an update is pending.
+internal sealed class UpdateIconButton : Control
+{
+    private bool _hasUpdate;
+    private string _version = "";
+    private readonly ToolTip _tips = new();
+
+    public UpdateIconButton()
+    {
+        DoubleBuffered = true;
+        BackColor = Color.Black;
+        Size = new Size(34, 34);
+        Cursor = Cursors.Hand;
+        RefreshTip();
+    }
+
+    public void SetHasUpdate(bool has, string version)
+    {
+        _hasUpdate = has;
+        _version = version ?? "";
+        RefreshTip();
+        Invalidate();
+    }
+
+    public void RefreshTip()
+    {
+        _tips.SetToolTip(this, _hasUpdate
+            ? $"{Lang.T("upd_available")}: v{_version}"
+            : $"{Lang.T("upd_title")} • v{AppVersion.Current}");
+    }
+
+    public void ShowHint(string text)
+    {
+        try { _tips.Show(text, this, 2500); } catch { /* ignore */ }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _tips.Dispose();
+        base.Dispose(disposing);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        if (Width <= 0 || Height <= 0) return;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        float cx = Width / 2f;
+        // download glyph: bold down-arrow into a tray (always bright white)
+        using (var pen = new Pen(Color.White, 2.8f)
+        {
+            StartCap = System.Drawing.Drawing2D.LineCap.Round,
+            EndCap = System.Drawing.Drawing2D.LineCap.Round,
+            LineJoin = System.Drawing.Drawing2D.LineJoin.Round,
+        })
+        {
+            g.DrawLine(pen, cx, 6, cx, 19);
+            g.DrawLine(pen, cx - 5.5f, 14, cx, 19.5f);
+            g.DrawLine(pen, cx + 5.5f, 14, cx, 19.5f);
+            g.DrawLine(pen, cx - 9, 25, cx + 9, 25);
+            g.DrawLine(pen, cx - 9, 25, cx - 9, 22);
+            g.DrawLine(pen, cx + 9, 25, cx + 9, 22);
+        }
+        if (_hasUpdate)
+        {
+            // badge dot, top-right
+            float bx = Width - 8, by = 7;
+            using (var ring = new Pen(Color.Black, 2))
+                g.DrawEllipse(ring, bx - 6.5f, by - 6.5f, 13, 13);
+            using var dot = new SolidBrush(Color.White);
+            g.FillEllipse(dot, bx - 5, by - 5, 10, 10);
+        }
+    }
+}
+
+// Custom frameless title bar: app title + update icon + min/max/close.
+// Dragging the bar moves the window (with Aero snap); double-click toggles maximize.
+internal sealed class TitleBar : Control
+{
+    public const int BarH = 38;
+    private const int BtnW = 46;
+
+    private readonly Label _title = new();
+
+    public UpdateIconButton UpdButton { get; } = new();
+    public Button MinButton { get; }
+    public Button MaxButton { get; }
+    public Button CloseButton { get; }
+
+    public string Title
+    {
+        get => _title.Text;
+        set => _title.Text = value;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    private const int WM_NCLBUTTONDOWN = 0x00A1;
+    private const int HTCAPTION = 2;
+
+    public TitleBar()
+    {
+        DoubleBuffered = true;
+        Dock = DockStyle.Top;
+        Height = BarH;
+        BackColor = Color.Black;
+        SetStyle(ControlStyles.StandardDoubleClick, true);
+
+        _title.AutoSize = false;
+        _title.BackColor = Color.Black;
+        _title.ForeColor = Color.White;
+        _title.Font = new Font("Segoe UI", 10.5F, FontStyle.Bold);
+        _title.TextAlign = ContentAlignment.MiddleLeft;
+        _title.MouseDown += (s, e) => BeginDrag(e);
+        _title.DoubleClick += (s, e) => OnDoubleClick(e);
+        Controls.Add(_title);
+
+        MinButton = MakeCaptionButton("–");
+        MaxButton = MakeCaptionButton("□");
+        CloseButton = MakeCaptionButton("✕");
+        CloseButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(196, 43, 28);
+        CloseButton.FlatAppearance.MouseDownBackColor = Color.FromArgb(140, 28, 18);
+
+        UpdButton.Cursor = Cursors.Hand;
+        Controls.Add(UpdButton);
+    }
+
+    private Button MakeCaptionButton(string text)
+    {
+        var b = new Button
+        {
+            Text = text,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 11F),
+            ForeColor = Color.White,
+            BackColor = Color.Black,
+            Size = new Size(BtnW, BarH),
+            TabStop = false,
+            UseVisualStyleBackColor = false,
+            Cursor = Cursors.Hand,
+        };
+        b.FlatAppearance.BorderSize = 0;
+        b.FlatAppearance.MouseOverBackColor = Color.FromArgb(42, 42, 48);
+        b.FlatAppearance.MouseDownBackColor = Color.FromArgb(42, 42, 48);
+        Controls.Add(b);
+        return b;
+    }
+
+    private void BeginDrag(MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left) return;
+        try
+        {
+            var f = FindForm();
+            if (f == null) return;
+            ReleaseCapture();
+            SendMessage(f.Handle, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
+        }
+        catch { /* ignore */ }
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        BeginDrag(e);
+        base.OnMouseDown(e);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        Height = BarH;
+        // قد يُستدعى أثناء الـconstructor قبل إنشاء الأزرار
+        if (CloseButton == null || MaxButton == null || MinButton == null) return;
+        CloseButton.Location = new Point(Width - BtnW, 0);
+        MaxButton.Location = new Point(Width - BtnW * 2, 0);
+        MinButton.Location = new Point(Width - BtnW * 3, 0);
+        UpdButton.Location = new Point(Width - BtnW * 3 - 40, 2);
+        _title.Location = new Point(12, 0);
+        _title.Size = new Size(Math.Max(50, Width - BtnW * 3 - 40 - 24), BarH);
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        if (Width <= 0 || Height <= 0) return;
+        g.Clear(Color.Black);
+        using var sep = new Pen(Color.FromArgb(46, 46, 54), 1);
+        g.DrawLine(sep, 0, Height - 1, Width, Height - 1);
     }
 }

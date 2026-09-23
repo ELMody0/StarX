@@ -30,23 +30,27 @@ jobs:
         shell: pwsh
         run: g++ -shared -O2 -o NativeBridge.dll NativeBridge.cpp
 
+      # Self-contained single-file + ReadyToRun (native code, no .pdb):
+      # runs on any x64 Windows with no .NET install, and is much harder to reverse-engineer.
       - name: Build StarX (C#)
-        run: dotnet publish StarX_Client/StarX_Client.csproj -c Release -r win-x64 --self-contained false -o publish/app
+        run: dotnet publish StarX_Client/StarX_Client.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:DebugType=none -p:DebugSymbols=false -o publish/app
 
       - name: Build StarXUpdater (C#)
-        run: dotnet publish StarXUpdater/StarXUpdater.csproj -c Release -r win-x64 --self-contained false -o publish/updater
+        run: dotnet publish StarXUpdater/StarXUpdater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:DebugType=none -p:DebugSymbols=false -o publish/updater
 
       - name: Stage package
         shell: pwsh
         run: |
           $stage = "stage/StarX-v$env:APP_VERSION"
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
-          Copy-Item publish/app/* "$stage/" -Recurse -Force -Exclude *.pdb
-          Copy-Item publish/updater/StarXUpdater.exe, publish/updater/StarXUpdater.dll "$stage/" -Force
+          Copy-Item publish/app/* "$stage/" -Recurse -Force -Exclude *.pdb, StarXUpdater.*
+          Copy-Item publish/updater/StarXUpdater.exe "$stage/" -Force
           Copy-Item NativeBridge.dll "$stage/" -Force
           if (Test-Path app_icon.ico) { Copy-Item app_icon.ico "$stage/" -Force }
+          if (-not (Test-Path "$stage/StarX.exe")) { throw "StarX.exe missing from stage" }
+          if (-not (Test-Path "$stage/StarXUpdater.exe")) { throw "StarXUpdater.exe missing from stage" }
 
-      - name: Create ZIP + SHA-256
+      - name: Create ZIP + SHA-256 + ECDSA signature
         shell: pwsh
         run: |
           $zip = "StarX-v$env:APP_VERSION.zip"
@@ -56,10 +60,33 @@ jobs:
           "$hash  $zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii -NoNewline
           "ASSET_ZIP=$zip" >> $env:GITHUB_ENV
 
+          # توقيع ECDSA P-256 — مفتاح من secrets.STARX_SIGNING_KEY (base64 ECPrivateKey)
+          $priv = "${{ secrets.STARX_SIGNING_KEY }}"
+          if ([string]::IsNullOrWhiteSpace($priv)) {
+            throw "STARX_SIGNING_KEY secret is not set — releases must be signed."
+          }
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.Security.Cryptography;
+          using System.Text;
+          public static class StarXSign {
+            public static string Sign(string hex, string privB64) {
+              using var ec = ECDsa.Create();
+              ec.ImportECPrivateKey(Convert.FromBase64String(privB64.Trim()), out _);
+              var sig = ec.SignData(Encoding.UTF8.GetBytes(hex.Trim().ToLowerInvariant()), HashAlgorithmName.SHA256);
+              return Convert.ToBase64String(sig);
+            }
+          }
+          "@
+          $sig = [StarXSign]::Sign($hash, $priv)
+          "$sig" | Out-File -FilePath "$zip.sig" -Encoding ascii -NoNewline
+          "ASSET_SIG=$zip.sig" >> $env:GITHUB_ENV
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ env.ASSET_ZIP }}
             ${{ env.ASSET_ZIP }}.sha256
+            ${{ env.ASSET_SIG }}
           fail_on_unmatched_files: true

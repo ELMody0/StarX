@@ -19,6 +19,9 @@ stage/
 *secret*.txt
 *key*.txt
 appsettings.*.json
+signing/
+*.key
+StarX-v*.zip.sig
 
 # OS / editor junk
 Thumbs.db
@@ -26,3 +29,6 @@ Desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# C++ build output at repo root (CI builds it)
+/NativeBridge.dll

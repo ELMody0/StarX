@@ -48,6 +48,21 @@ internal static class PublishManager
             progress?.Report(Lang.T("pub_hash"));
             string sha = Sha256File(zipPath);
 
+            // توقيع ECDSA — إلزامي في Release (مفتاح من STARX_SIGNING_KEY أو signing/*.key)
+            progress?.Report(Lang.T("pub_sign"));
+            string? priv = StarXShared.UpdateSecurity.LoadPrivateKey();
+#if !DEBUG
+            if (string.IsNullOrWhiteSpace(priv))
+                return (false, Lang.T("pub_no_signing_key"));
+#endif
+            string? sig = null;
+            if (!string.IsNullOrWhiteSpace(priv))
+            {
+                sig = StarXShared.UpdateSecurity.SignSha256Hex(sha, priv!);
+                if (string.IsNullOrEmpty(sig))
+                    return (false, Lang.T("pub_no_signing_key"));
+            }
+
             progress?.Report(Lang.T("pub_release"));
             var (relId, uploadUrl, relErr) = await CreateReleaseAsync(ver, token.Trim(), notes ?? "", ct)
                 .ConfigureAwait(false);
@@ -66,6 +81,16 @@ internal static class PublishManager
                 $"StarX-v{ver}.zip.sha256", "text/plain", token.Trim(), ct).ConfigureAwait(false);
             if (upErr != null)
                 return (false, upErr);
+
+            if (sig != null)
+            {
+                string sigFile = Path.Combine(work, $"StarX-v{ver}.zip.sig");
+                await File.WriteAllTextAsync(sigFile, sig + "\n", ct).ConfigureAwait(false);
+                upErr = await UploadAssetAsync(uploadUrl, sigFile,
+                    $"StarX-v{ver}.zip.sig", "text/plain", token.Trim(), ct).ConfigureAwait(false);
+                if (upErr != null)
+                    return (false, upErr);
+            }
 
             try { Directory.Delete(work, recursive: true); } catch { /* ignore */ }
             return (true, $"{Lang.T("pub_done")} — v{ver}");
@@ -90,7 +115,12 @@ internal static class PublishManager
                 continue;
             if (ExcludedExtensions.Contains(Path.GetExtension(file), StringComparer.OrdinalIgnoreCase))
                 continue;
-            if (Path.GetFileName(file).EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
+            string name = Path.GetFileName(file);
+            if (name.EndsWith(".bak", StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith(".env", StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith(".token", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains(".token.", StringComparison.OrdinalIgnoreCase) ||
+                name.Equals("appsettings.Local.json", StringComparison.OrdinalIgnoreCase))
                 continue;
             string dest = Path.Combine(stage, rel);
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);

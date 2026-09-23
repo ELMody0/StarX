@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http;
 using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace StarXUpdater;
 
@@ -25,7 +26,8 @@ internal sealed class UpdaterForm : Form
     public int ExitCode { get; private set; } = 1;
     public bool Succeeded { get; private set; }
 
-    private string TempDir => Path.Combine(Path.GetTempPath(), "StarXUpdate");
+    private string TempDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "StarXUpdate");
     private string LogPath => _opts != null
         ? Path.Combine(_opts.InstallDir, "logs", "updater.log")
         : Path.Combine(TempDir, "updater.log");
@@ -62,7 +64,7 @@ internal sealed class UpdaterForm : Form
         _lblDetail.AutoSize = false;
         _lblDetail.Bounds = new Rectangle(20, 90, 410, 40);
         _lblDetail.Font = new Font("Segoe UI", 9F);
-        _lblDetail.ForeColor = Color.FromArgb(170, 170, 170);
+        _lblDetail.ForeColor = Color.White;
         Controls.Add(_lblDetail);
 
         _btnClose.Text = "Close";
@@ -93,18 +95,14 @@ internal sealed class UpdaterForm : Form
     {
         _lblStatus.Text = status;
         if (detail != null) _lblDetail.Text = detail;
-        if (marquee) _bar.Style = ProgressBarStyle.Marquee;
-        else
-        {
-            _bar.Style = ProgressBarStyle.Blocks;
-            if (pct >= 0) _bar.Value = Math.Clamp(pct, 0, 100);
-        }
+        _bar.Style = ProgressBarStyle.Blocks;
+        if (pct >= 0) _bar.Value = Math.Clamp(pct, 0, 100);
     }
 
     private void Fail(string message)
     {
         Log("ERROR: " + message);
-        _lblStatus.ForeColor = Color.FromArgb(255, 123, 123);
+        _lblStatus.ForeColor = Color.White;
         Report(message, "");
         _btnClose.Visible = true;
         ControlBox = true;
@@ -123,10 +121,31 @@ internal sealed class UpdaterForm : Form
         Log($"Update started: current pid={o.Pid} install={o.InstallDir} version={o.Version} url={o.DownloadUrl}");
         try
         {
+            // 0) رفض مجلدات التطوير (فيها .pdb/.csproj) — حدّث نسخة منصّبة فقط
+            if (IsDevFolder(o.InstallDir))
+            {
+                Fail("Refusing to update a development folder (found .pdb/.csproj).\nInstall StarX from a release package and update that copy instead.");
+                return;
+            }
             // 1) انتظار خروج StarX (حدثي — بدون Sleep ثابت)
             try
             {
                 var p = Process.GetProcessById(o.Pid);
+                // تحقق هوية العملية: لا ننتظر PID غريباً (مقاومة PID reuse)
+                try
+                {
+                    string? mod = p.MainModule?.FileName;
+                    string expected = Path.Combine(o.InstallDir, "StarX.exe");
+                    if (!string.IsNullOrEmpty(mod) &&
+                        !string.Equals(Path.GetFullPath(mod), Path.GetFullPath(expected),
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        Log($"PID {o.Pid} is not StarX.exe ({mod}) — skipping wait.");
+                        p.Dispose();
+                        goto skipWait;
+                    }
+                }
+                catch { /* قد يرفض MainModule — نكمل انتظاراً عادياً */ }
                 Report("Waiting for StarX to exit…", "", marquee: true);
                 Log($"Waiting for pid {o.Pid}…");
                 if (!p.WaitForExit(30000))
@@ -140,6 +159,7 @@ internal sealed class UpdaterForm : Form
             {
                 Log("StarX already exited.");
             }
+        skipWait:;
 
             // 2) التحميل إلى ملف مؤقت
             Directory.CreateDirectory(TempDir);
@@ -150,7 +170,7 @@ internal sealed class UpdaterForm : Form
             await DownloadAsync(o.DownloadUrl, zipPath);
             Log("Download completed: " + new FileInfo(zipPath).Length + " bytes.");
 
-            // 3) التحقق من البصمة — ممنوع التثبيت قبلها
+            // 3) التحقق من البصمة + التوقيع — ممنوع التثبيت قبلها
             Report("Verifying update…", "", marquee: true);
             string actual = Sha256File(zipPath);
             if (!actual.Equals(o.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -159,13 +179,33 @@ internal sealed class UpdaterForm : Form
                 Fail("Update cancelled.\nThe downloaded update failed integrity verification.\nYour current StarX installation was not modified.");
                 return;
             }
+            // توقيع ECDSA (خط الدفاع ضد اختطاع GitHub — مفتاح عام مضمّن)
+            if (!string.IsNullOrEmpty(o.Signature))
+            {
+                if (!StarXShared.UpdateSecurity.VerifySha256Hex(actual, o.Signature))
+                {
+                    try { File.Delete(zipPath); } catch { /* ignore */ }
+                    Fail("Update cancelled.\nInvalid package signature.\nYour current StarX installation was not modified.");
+                    return;
+                }
+                Log("Signature OK.");
+            }
+#if !DEBUG
+            else
+            {
+                try { File.Delete(zipPath); } catch { /* ignore */ }
+                Fail("Update cancelled.\nPackage is not signed.\nYour current StarX installation was not modified.");
+                return;
+            }
+#endif
             Log("Checksum OK.");
 
-            // 4) نسخة احتياطية
+            // 4) نسخة احتياطية + manifest للتحقق عند الاسترجاع
             Report("Preparing update…", "", marquee: true);
             var selfNames = SelfFileNames();
             string backup = Path.Combine(TempDir, "backup-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
             CopyTree(o.InstallDir, backup, selfNames, skipLogs: true);
+            string? manifestPath = WriteBackupManifest(backup);
             Log("Backup at: " + backup);
 
             // 5) الاستبدال الآمن
@@ -178,14 +218,9 @@ internal sealed class UpdaterForm : Form
             catch (Exception ex)
             {
                 Log("Install failed: " + ex.Message + " — restoring backup.");
-                try
+                if (!TryRestoreBackup(backup, o.InstallDir, selfNames, manifestPath, out string? restoreErr))
                 {
-                    WipeInstall(o.InstallDir, selfNames);
-                    CopyTree(backup, o.InstallDir, selfNames, skipLogs: false);
-                }
-                catch (Exception rex)
-                {
-                    Fail("Installation failed and rollback failed: " + rex.Message +
+                    Fail("Installation failed and rollback failed: " + restoreErr +
                          "\nBackup kept at: " + backup);
                     return;
                 }
@@ -197,13 +232,10 @@ internal sealed class UpdaterForm : Form
             if (!VerifyInstall(o.InstallDir, o.Version, out string why))
             {
                 Log("Verify failed: " + why + " — restoring backup.");
-                try
-                {
-                    WipeInstall(o.InstallDir, selfNames);
-                    CopyTree(backup, o.InstallDir, selfNames, skipLogs: false);
-                }
-                catch { /* ignore */ }
-                Fail("Installation verification failed — previous version restored.");
+                if (!TryRestoreBackup(backup, o.InstallDir, selfNames, manifestPath, out _))
+                    Fail("Installation verification failed — rollback failed.\nBackup kept at: " + backup);
+                else
+                    Fail("Installation verification failed — previous version restored.");
                 return;
             }
             Log("Installation verified.");
@@ -211,6 +243,7 @@ internal sealed class UpdaterForm : Form
             // 7) تنظيف + إعادة التشغيل
             try { File.Delete(zipPath); } catch { /* ignore */ }
             try { Directory.Delete(backup, recursive: true); } catch { /* ignore */ }
+            try { if (manifestPath != null && File.Exists(manifestPath)) File.Delete(manifestPath); } catch { /* ignore */ }
             string exe = Path.Combine(o.InstallDir, "StarX.exe");
             Report("Restarting StarX…", "", 100);
             var started = Process.Start(new ProcessStartInfo
@@ -293,6 +326,111 @@ internal sealed class UpdaterForm : Form
         return Convert.ToHexString(sha.ComputeHash(fs)).ToLowerInvariant();
     }
 
+    /// <summary>يكتب manifest بصمات كل ملفات النسخة الاحتياطية (rel → sha256).</summary>
+    private static string? WriteBackupManifest(string backupDir)
+    {
+        try
+        {
+            string path = Path.Combine(backupDir + ".manifest.json");
+            using var ms = new MemoryStream();
+            using (var w = new Utf8JsonWriter(ms))
+            {
+                w.WriteStartObject();
+                foreach (string file in Directory.EnumerateFiles(backupDir, "*", SearchOption.AllDirectories))
+                {
+                    string rel = Path.GetRelativePath(backupDir, file)
+                        .Replace(Path.DirectorySeparatorChar, '/');
+                    w.WriteString(rel, Sha256File(file));
+                }
+                w.WriteEndObject();
+            }
+            File.WriteAllBytes(path, ms.ToArray());
+            return path;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// استرجاع النسخة الاحتياطية مع re-hash لكل ملف قبل/بعد النقل —
+    /// يمنع تزوير backup في %LOCALAPPDATA% أثناء فشل التثبيت.
+    /// </summary>
+    private static bool TryRestoreBackup(
+        string backupDir, string install, HashSet<string> keepFiles,
+        string? manifestPath, out string? error)
+    {
+        error = null;
+        try
+        {
+            if (!Directory.Exists(backupDir))
+            {
+                error = "backup missing";
+                return false;
+            }
+
+            // 1) تحقق كل ملف في backup يطابق manifest قبل لمس التثبيت
+            var expected = LoadManifest(manifestPath);
+            if (expected != null)
+            {
+                foreach (var kv in expected)
+                {
+                    string f = Path.Combine(backupDir,
+                        kv.Key.Replace('/', Path.DirectorySeparatorChar));
+                    if (!File.Exists(f))
+                    {
+                        error = "backup file missing: " + kv.Key;
+                        return false;
+                    }
+                    if (!Sha256File(f).Equals(kv.Value, StringComparison.OrdinalIgnoreCase))
+                    {
+                        error = "backup tampered: " + kv.Key;
+                        return false;
+                    }
+                }
+            }
+
+            // 2) استبدال
+            WipeInstall(install, keepFiles);
+            CopyTree(backupDir, install, keepFiles, skipLogs: false);
+
+            // 3) re-hash بعد النقل
+            if (expected != null)
+            {
+                foreach (var kv in expected)
+                {
+                    string f = Path.Combine(install,
+                        kv.Key.Replace('/', Path.DirectorySeparatorChar));
+                    if (File.Exists(f) &&
+                        !Sha256File(f).Equals(kv.Value, StringComparison.OrdinalIgnoreCase))
+                    {
+                        error = "restore hash mismatch: " + kv.Key;
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static Dictionary<string, string>? LoadManifest(string? path)
+    {
+        try
+        {
+            if (path == null || !File.Exists(path)) return null;
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            foreach (var p in doc.RootElement.EnumerateObject())
+                if (p.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                    dict[p.Name] = p.Value.GetString() ?? "";
+            return dict.Count > 0 ? dict : null;
+        }
+        catch { return null; }
+    }
+
     private static void CopyTree(string src, string dst, HashSet<string> skipFiles, bool skipLogs)
     {
         foreach (string file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
@@ -348,6 +486,22 @@ internal sealed class UpdaterForm : Form
             Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
             entry.ExtractToFile(dest, overwrite: true);
         }
+    }
+
+    private static bool IsDevFolder(string install)
+    {
+        try
+        {
+            foreach (string f in Directory.EnumerateFiles(install, "*", SearchOption.TopDirectoryOnly))
+            {
+                string ext = Path.GetExtension(f);
+                if (ext.Equals(".pdb", StringComparison.OrdinalIgnoreCase) ||
+                    ext.Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        catch { /* ignore → treat as normal folder */ }
+        return false;
     }
 
     private static bool VerifyInstall(string install, string expectedVersion, out string why)

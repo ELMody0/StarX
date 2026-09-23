@@ -2,7 +2,8 @@ namespace StarXUpdater;
 
 /// <summary>خيارات سطر الأوامر للمحدّث (يمررها StarX.exe).</summary>
 internal sealed record UpdaterOptions(
-    int Pid, string InstallDir, string DownloadUrl, string Version, string Sha256);
+    int Pid, string InstallDir, string DownloadUrl, string Version, string Sha256,
+    string? Signature = null);
 
 internal static class UpdaterArgs
 {
@@ -32,9 +33,11 @@ internal static class UpdaterArgs
         { error = "Missing or invalid: --version <x.y.z>"; return false; }
         if (!map.TryGetValue("sha256", out string? sha) || sha.Length != 64 || !sha.All(Uri.IsHexDigit))
         { error = "Missing or invalid: --sha256 <64 hex chars>"; return false; }
+        map.TryGetValue("sig", out string? sig);
 
         opts = new UpdaterOptions(pid, Path.GetFullPath(dir.Trim()), url.Trim(),
-            ver.Trim().TrimStart('v', 'V'), sha.ToLowerInvariant());
+            ver.Trim().TrimStart('v', 'V'), sha.ToLowerInvariant(),
+            string.IsNullOrWhiteSpace(sig) ? null : sig.Trim());
         return true;
     }
 
@@ -42,10 +45,18 @@ internal static class UpdaterArgs
     {
         if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var u))
             return false;
-        if (u.Scheme == Uri.UriSchemeHttps || u.Scheme == Uri.UriSchemeFile)
+        if (u.Scheme == Uri.UriSchemeHttps)
+            return true;
+#if DEBUG
+        // file:// للاختبار المحلي فقط في بناء التطوير
+        if (u.Scheme == Uri.UriSchemeFile)
             return true;
         // http للمختبرات المحلية فقط
         return u.Scheme == Uri.UriSchemeHttp && u.IsLoopback;
+#else
+        // إصدارات Release: لا file:// ولا http — منع تحويل المحدّث لأداة استبدال ملفات
+        return false;
+#endif
     }
 
     private static bool IsSemVer(string? v)

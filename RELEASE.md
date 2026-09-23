@@ -18,10 +18,30 @@
 ## النشر عبر Git Tag (الطريقة الاحترافية)
 
 ```powershell
-# 1) حدّث أي كود ثم:
-git tag v1.4.0
-git push origin v1.4.0
-# 2) الـ workflow يبني C# + C++ ويجهز ZIP + SHA-256 وينشر Release تلقائياً
+# من جذر المشروع — أمر واحد يوحّد VERSION + commit + tag + push:
+.\release.ps1 1.4.0
+# الـ workflow يبني C# + C++ ويجهز ZIP + SHA-256 وينشر Release تلقائياً
+```
+
+> مهم: انشر دائماً عبر `release.ps1` (مش `git tag` يدوي) عشان رقم `VERSION`
+> يفضل مساوياً لآخر Release — غير كده نسخ التطوير هتنبه لتحديث وهمي.
+
+> الإصدارات المنشورة **Self-contained single-file + ReadyToRun وبدون ملفات `.pdb`**:
+> الـ `StarX.exe` جواه الرانتايم ويشتغل على أي ويندوز x64 **بدون تثبيت .NET**،
+> والكود مترجم Native مسبقاً وبدون رموز تصحيح — عكس هندسته أصعب بكثير.
+> خط الدفاع الأساسي يفضل في السيرفر (التحقق من المفاتيح عبر Supabase RPC) —
+> تعديل نسخة العميل لا يمنح ترخيصاً.
+> لو ظهرت رسالة `You must install .NET Desktop Runtime` فده معناه إن النسخة
+> المشغلة قديمة (framework-dependent) — حمّل آخر Release أو ثبّت
+> `.NET Desktop Runtime` من صفحة تحميل دوت نت.
+
+## نسخة محلية للمشاركة (بدون GitHub)
+
+```powershell
+dotnet publish StarX_Client/StarX_Client.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist/StarX
+dotnet publish StarXUpdater/StarXUpdater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist/StarXUpdater
+Copy-Item dist/StarXUpdater/StarXUpdater.exe dist/StarX/ -Force
+# مجلد dist/StarX جاهز للنسخ والتشغيل على أي جهاز بدون .NET
 ```
 
 ملفات الإصدار المطلوبة (يتحقق منها التطبيق والمحدّث):
@@ -29,9 +49,13 @@ git push origin v1.4.0
 ```text
 StarX-v1.4.0.zip
 StarX-v1.4.0.zip.sha256   (سطر واحد: "<hash>  StarX-v1.4.0.zip")
+StarX-v1.4.0.zip.sig      (توقيع ECDSA base64 — إلزامي في Release)
 ```
 
 ## تجربة محلية v1.0.0 → v1.1.0 (بدون GitHub)
+
+> ملاحظة: بناء `StarX_Client` يبني `StarXUpdater` تلقائياً وينسخه بجانب `StarX.exe` —
+> رسالة "ملف المحدّث غير موجود" تعني أن النسخ لم يحدث (ابنِ مرة أخرى).
 
 ```powershell
 # 1) ابنِ التطبيق والمحدّث Release
@@ -62,7 +86,7 @@ StarXUpdater/bin/Release/net10.0-windows/StarXUpdater.exe --pid <PID> --install-
 
 ## الأمان
 
-- لا يُثبَّت أي ملف قبل نجاح تحقق SHA-256.
+- لا يُثبَّت أي ملف قبل تحقق SHA-256 **و** التوقيع ECDSA (`.zip.sig`، مفتاح عام مضمّن) — SHA لسلامة النقل، والتوقيع ضد اختطاع الحساب.
 - نسخة احتياطية كاملة قبل الاستبدال + استرجاع تلقائي عند الفشل.
 - مجلد `logs/` وبيانات `%AppData%/StarX` لا تُمس أبداً.
 - لا رموز GitHub في التطبيق — رمز النشر يُدخل يدوياً ولا يُحفظ.

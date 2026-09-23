@@ -9,10 +9,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <PlatformTarget>x64</PlatformTarget>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>WFO1000</NoWarn>
     <ApplicationIcon>..\app_icon.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\UpdateSecurity.cs" Link="Shared\UpdateSecurity.cs" />
     <None Include="NativeBridge.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -23,5 +25,22 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+
+  <!-- ابنِ المحدّث مع التطبيق وانسخه بجانبه (للتطوير — الإصدارات تُجمّع في الـ workflow) -->
+  <ItemGroup>
+    <ProjectReference Include="..\StarXUpdater\StarXUpdater.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Target Name="CopyUpdaterNextToApp" AfterTargets="Build">
+    <PropertyGroup>
+      <UpdaterOutDir>$(MSBuildProjectDirectory)\..\StarXUpdater\bin\$(Configuration)\net10.0-windows\</UpdaterOutDir>
+    </PropertyGroup>
+    <Exec Command="copy /Y &quot;$(UpdaterOutDir)StarXUpdater.exe&quot; &quot;$(TargetDir)&quot;" ContinueOnError="true" />
+    <Exec Command="copy /Y &quot;$(UpdaterOutDir)StarXUpdater.dll&quot; &quot;$(TargetDir)&quot;" ContinueOnError="true" />
+    <Exec Command="copy /Y &quot;$(UpdaterOutDir)StarXUpdater.deps.json&quot; &quot;$(TargetDir)&quot;" ContinueOnError="true" />
+    <Exec Command="copy /Y &quot;$(UpdaterOutDir)StarXUpdater.runtimeconfig.json&quot; &quot;$(TargetDir)&quot;" ContinueOnError="true" />
+  </Target>
 
 </Project>

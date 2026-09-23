@@ -11,4 +11,8 @@
     <ApplicationIcon>..\app_icon.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\UpdateSecurity.cs" Link="Shared\UpdateSecurity.cs" />
+  </ItemGroup>
+
 </Project>

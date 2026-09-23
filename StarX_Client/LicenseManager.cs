@@ -14,7 +14,7 @@ internal sealed record LicenseState(bool Active, string Plan, string Detail, str
 
 internal sealed record LicenseCache(string Key, string Hwid, string Plan, DateTime ValidatedAtUtc);
 
-internal sealed record OwnerUser(string Hwid, string KeyMasked, string Plan, string LastSeen, bool Online);
+internal sealed record OwnerUser(string DeviceName, string Hwid, string KeyMasked, string Plan, string LastSeen, bool Online);
 
 internal sealed record OwnerLicense(string Key, string Plan, bool Active, int Devices, string? ExpiresAt, string? Note, string Created);
 
@@ -57,7 +57,7 @@ internal static class LicenseManager
         return "pc-" + Convert.ToHexString(hash)[..16].ToLowerInvariant();
     }
 
-    // ---------- الكاش المحلي ----------
+    // ---------- الكاش المحلي (مشفّر DPAPI — يحمي المفتاح plan/validatedAt) ----------
 
     public static LicenseCache? LoadCache()
     {
@@ -65,7 +65,9 @@ internal static class LicenseManager
         {
             string p = CachePath;
             if (!File.Exists(p)) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(p));
+            string raw = File.ReadAllText(p);
+            string json = MaybeUnprotect(raw);
+            using var doc = JsonDocument.Parse(json);
             var r = doc.RootElement;
             return new LicenseCache(
                 Str(r, "key"),
@@ -88,12 +90,41 @@ internal static class LicenseManager
             plan,
             validatedAt = DateTime.UtcNow,
         });
-        File.WriteAllText(p, json);
+        File.WriteAllText(p, MaybeProtect(json));
     }
 
     public static void ClearCache()
     {
         try { if (File.Exists(CachePath)) File.Delete(CachePath); } catch { /* ignore */ }
+    }
+
+    /// <summary>تشفير DPAPI (CurrentUser) — يفشل بأمان ويعيد النص الأصلي.</summary>
+    private static string MaybeProtect(string plain)
+    {
+        try
+        {
+            byte[] enc = ProtectedData.Protect(
+                Encoding.UTF8.GetBytes(plain), optionalEntropy: null,
+                DataProtectionScope.CurrentUser);
+            return "dpapi:" + Convert.ToBase64String(enc);
+        }
+        catch { return plain; }
+    }
+
+    private static string MaybeUnprotect(string raw)
+    {
+        if (raw.StartsWith("dpapi:", StringComparison.Ordinal))
+        {
+            try
+            {
+                byte[] dec = ProtectedData.Unprotect(
+                    Convert.FromBase64String(raw["dpapi:".Length..]), optionalEntropy: null,
+                    DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(dec);
+            }
+            catch { return null!; } // ملف تالف/جهاز آخر → null عبر catch بالمستدعي
+        }
+        return raw; // قديم غير مشفّر — للتوافق ثم يُعاد تشفيره عند الحفظ التالي
     }
 
     private static string Str(JsonElement r, string name, string fallback = "") =>
@@ -167,6 +198,21 @@ internal static class LicenseManager
         {
             using var doc = await RpcAsync("ping",
                 new { p_key = key.Trim(), p_hwid = hwid }, ct).ConfigureAwait(false);
+        }
+        catch { /* best effort */ }
+    }
+
+    public static string GetDeviceName() => Environment.MachineName;
+
+    public static async Task DevicePingAsync(string hwid, string deviceName, string plan,
+        string? key = null, CancellationToken ct = default)
+    {
+        if (!SupabaseConfig.IsConfigured) return;
+        try
+        {
+            using var doc = await RpcAsync("device_ping",
+                new { p_hwid = hwid, p_device_name = deviceName, p_plan = plan, p_key = key },
+                ct).ConfigureAwait(false);
         }
         catch { /* best effort */ }
     }
@@ -246,10 +292,14 @@ internal static class LicenseManager
                     return (false, Lang.T("r_forbidden"), online, licenses);
                 if (r.TryGetProperty("online", out var on) && on.ValueKind == JsonValueKind.Array)
                     foreach (var u in on.EnumerateArray())
+                    {
+                        string dn = Str(u, "device_name").Trim();
+                        if (string.IsNullOrWhiteSpace(dn)) dn = Str(u, "hwid", "?");
                         online.Add(new OwnerUser(
-                            Str(u, "hwid"), Str(u, "key_masked", "—"), Str(u, "plan", "free"),
+                            dn, Str(u, "hwid"), Str(u, "key_masked", "—"), Str(u, "plan", "free"),
                             Str(u, "last_seen_at").Left(16),
                             u.TryGetProperty("is_online", out var io) && io.ValueKind == JsonValueKind.True));
+                    }
                 if (r.TryGetProperty("licenses", out var li) && li.ValueKind == JsonValueKind.Array)
                     foreach (var l in li.EnumerateArray())
                         licenses.Add(new OwnerLicense(
@@ -360,6 +410,12 @@ internal static class LicenseManager
         }
         if (reason.StartsWith("network", StringComparison.OrdinalIgnoreCase))
         {
+            // لا تمنح owner أبداً في وضع عدم الاتصال — الكاش المحلي غير موقّع
+            if (cache.Plan == "owner")
+            {
+                ClearCache();
+                return new LicenseState(false, "free", Lang.T("st_no_grace"), string.Empty);
+            }
             if ((DateTime.UtcNow - cache.ValidatedAtUtc).TotalDays <= OfflineGraceDays)
                 return new LicenseState(true, cache.Plan, Lang.T("st_offline"), string.Empty);
             return new LicenseState(false, "free", Lang.T("st_no_grace"), string.Empty);

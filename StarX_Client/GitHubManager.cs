@@ -13,6 +13,10 @@ internal sealed record ReleaseInfo(
     public string? Sha256Url =>
         Assets.FirstOrDefault(a => a.Name.Equals(
             AssetName + ".sha256", StringComparison.OrdinalIgnoreCase))?.DownloadUrl;
+
+    public string? SigUrl =>
+        Assets.FirstOrDefault(a => a.Name.Equals(
+            AssetName + ".sig", StringComparison.OrdinalIgnoreCase))?.DownloadUrl;
 }
 
 /// <summary>تكامل GitHub Releases (قراءة عامة — بدون أسرار).</summary>
@@ -131,6 +135,39 @@ internal static class GitHubManager
             if (hex.Length != 64 || !hex.All(Uri.IsHexDigit))
                 return (null, "no-checksum");
             return (hex, null);
+        }
+        catch (Exception ex) when (ex is TimeoutException or HttpRequestException or TaskCanceledException)
+        {
+            return (null, "network");
+        }
+        catch (Exception)
+        {
+            return (null, "network");
+        }
+    }
+
+    /// <summary>تحميل توقيع ECDSA المرفق للحزمة (ملف .sig).</summary>
+    public static async Task<(string? Sig, string? Error)> GetAssetSignatureAsync(
+        ReleaseInfo rel, CancellationToken ct = default)
+    {
+        string? url = rel.SigUrl;
+        if (string.IsNullOrEmpty(url))
+            return (null, "no-signature");
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(UpdateConfig.RequestTimeoutSeconds));
+        try
+        {
+            using var res = await _http.GetAsync(url, cts.Token).ConfigureAwait(false);
+            if (!res.IsSuccessStatusCode)
+                return (null, "no-signature");
+            string text = (await res.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false)).Trim();
+            if (string.IsNullOrEmpty(text))
+                return (null, "no-signature");
+            // يقبل base64 خام أو سطر نصي يحويه
+            string b64 = text.Split((char[])[' ', '\t', '\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? text;
+            return (b64, null);
         }
         catch (Exception ex) when (ex is TimeoutException or HttpRequestException or TaskCanceledException)
         {
